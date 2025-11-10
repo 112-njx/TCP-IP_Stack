@@ -1,0 +1,58 @@
+﻿/**
+ * 用1500行代码从0开始实现TCP/IP协议栈+WEB服务器
+ *
+ * 本源码旨在用最简单、最易懂的方式帮助你快速地了解TCP/IP以及HTTP工作原理的主要核心知识点。
+ * 所有代码经过精心简化设计，避免使用任何复杂的数据结构和算法，避免实现其它无关紧要的细节。
+ *
+ * 作者：李述铜
+ * 微信公众号：01课堂
+ * 网址：https://www.yuque.com/lishutong-docs
+ *
+ * 版权声明：源码仅供学习参考，请勿用于商业产品，不保证可靠性。二次开发或其它商用前请联系作者。
+ *
+ * 注意：本课程提供的tcp/ip实现很简单，只能够用于演示基本的协议运行机制。我还开发了另一套更加完整的课程，
+ * 展示了一个更加完成的TCP/IP协议栈的实现。功能包括：
+ * 1. IP层的分片与重组
+ * 2. Ping功能的实现
+ * 3. TCP的流量控制等
+ * 4. 基于UDP的TFTP服务器实现
+ * 5. DNS域名接触
+ * 6. HTTP服务器
+ * 7. 提供socket接口供应用程序使用
+ * 8、代码可移植，可移植到arm和x86平台上
+ * ..... 更多功能开发中...........
+ * 如果你有兴趣的话，请扫仓库中的二维码，或者点击以上面的链接可找到该课程。
+ */
+#ifndef XNET_TINY_H
+#define XNET_TINY_H
+
+#include <stdint.h>
+
+#define XNET_CFG_PACKET_MAX_SIZE        1516        // 收发数据包的最大大小
+
+typedef enum _xnet_err_t {
+    XNET_ERR_OK = 0,
+    XNET_ERR_IO = -1,
+}xnet_err_t;
+
+/**
+ * 网络数据结构
+ */
+typedef struct _xnet_packet_t{
+    uint16_t size;                              // 包中有效数据大小
+    uint8_t * data;                             // 包的数据起始地址
+    uint8_t payload[XNET_CFG_PACKET_MAX_SIZE];  // 最大负载数据量
+}xnet_packet_t;
+
+xnet_packet_t * xnet_alloc_for_send(uint16_t data_size);
+xnet_packet_t * xnet_alloc_for_read(uint16_t data_size);
+
+xnet_err_t xnet_driver_open (uint8_t * mac_addr);
+xnet_err_t xnet_driver_send (xnet_packet_t * packet);
+xnet_err_t xnet_driver_read (xnet_packet_t ** packet);
+
+void xnet_init (void);
+void xnet_poll(void);
+
+#endif // XNET_TINY_H
+
