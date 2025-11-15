@@ -1,4 +1,5 @@
-﻿#include <stdio.h>
+﻿//该部分为单片机相关代码，网络编程不用管！！
+#include <stdio.h>
 #include "enc28j60_device.h"     
 
 // 一共8KB的以太网缓存
