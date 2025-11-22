@@ -12,6 +12,12 @@
 // 设置解决这一问题
 #pragma park(1)   //编译器不自动填充
 
+//
+typedef enum xnet_protocol_t{
+    XNET_PROTOCOL_ARP = 0x0806,
+    XNET_PROTOCOL_IP = 0x0800,
+}xnet_protocol_t;
+
 //定义以太网包头结构
 typedef struct _xether_hdr_t{
     uint8_t dest[XNET_MAC_ADDR_SIZE];
