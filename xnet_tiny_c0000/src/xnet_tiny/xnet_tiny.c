@@ -11,6 +11,10 @@
 static uint8_t netif_mac[XNET_MAC_ADDR_SIZE];
 
 static xnet_packet_t tx_packet,rx_packet;
+
+//本次项目定义一个arp映射表
+static xarp_entry_t arp_entry;
+
 //static修饰以太网数据包结构，后者是接收端和输出端，保证数据在传输时不会改变，是全局变量
 xnet_packet_t* xnet_alloc_for_send(uint16_t data_size){
     //数据加上原来的包头
@@ -103,9 +107,15 @@ static void ethernet_poll(void) {
     }
 }
 
+//arp初始化函数
+void xarp_init(void){
+    arp_entry.state = XARP_ENTRY_FREE;
+}
+
 //初始化函数
 void xnet_init(void){
     ethernet_init();
+    xarp_init();
 }
 
 //轮询网卡数据函数
@@ -113,9 +123,17 @@ void xnet_poll(void){
     ethernet_poll();
 }
 
+//ARP包部分 本机首先发送ARP请求寻找那个机器的ip地址是
+// 收数据方的地址，该ip地址主机应答该主机MAC地址
 
+//实际需要考虑的问题:1.网卡的数量不固定 该ip地址网卡
+// 可能不工作
+//2.IP->MAC可能并不固定，IP可能动态分配网卡
 
-
+//问题解决：表项需可增删改
+//1.动态增加新表项
+//2.删除无效旧表项
+//3.表项无效或错误的检查
 
 
 
