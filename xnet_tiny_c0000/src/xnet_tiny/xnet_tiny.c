@@ -159,11 +159,24 @@ xnet_err_t xarp_make_response (xarp_packet_t* arp_packet){
     response_packet->hw_len = XNET_MAC_ADDR_SIZE;
     response_packet->pro_len = XNET_IPV4_ADDR_SIZE;
     response_packet->opcode = swap_order16(XARP_REPLY);
-    memcpy(arp_packet->sender_mac,netif_mac,XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->sender_ip,netif_ipaddr.array,XNET_IPV4_ADDR_SIZE);
-    memset(arp_packet->target_mac,0,XNET_MAC_ADDR_SIZE);
-    memcpy(arp_packet->target_ip,ipaddr->array,XNET_IPV4_ADDR_SIZE);
-    return ethernet_out_to(XNET_PROTOCOL_ARP,ether_broadcast,packet);
+    memcpy(response_packet->sender_mac,netif_mac,XNET_MAC_ADDR_SIZE);
+    memcpy(response_packet->sender_ip,netif_ipaddr.array,XNET_IPV4_ADDR_SIZE);
+    memcpy(response_packet->target_mac,arp_packet->sender_mac,XNET_MAC_ADDR_SIZE);
+    memcpy(response_packet->target_ip,arp_packet->sender_ip,XNET_IPV4_ADDR_SIZE);
+    return ethernet_out_to(XNET_PROTOCOL_ARP,arp_packet->sender_mac,packet);
+}
+
+//在arp包处理函数中，用于检查传入的ip是否是协议栈要的ip的辅助函数
+// 比较 xipaddr_t 与一个原始的 IPv4 地址缓冲区是否相同
+int xipaddr_is_equal_buf(const xipaddr_t* ipaddr, const uint8_t* buf) {
+    return memcmp(ipaddr->array, buf, XNET_IPV4_ADDR_SIZE) == 0;
+}
+
+//在arp包处理函数中，用于记录该ip对应需要的mac地址的函数
+static void update_arp_entry(uint8_t* src_ip,uint8_t* mac_addr){
+    memcpy(arp_entry.ipaddr.array,src_ip,XNET_IPV4_ADDR_SIZE);
+    memcpy(arp_entry.macaddr,mac_addr,XNET_MAC_ADDR_SIZE);
+    arp_entry.state = XARP_ENTRY_OK;
 }
 
 //arp包处理函数
@@ -178,7 +191,7 @@ void xarp_in(xnet_packet_t *packet){
         if ((swap_order16(arp_packet->hw_type) != XARP_HW_ENTER) ||
            (arp_packet->hw_len != XNET_MAC_ADDR_SIZE) ||
            (swap_order16(arp_packet->pro_type) != XNET_PROTOCOL_IP) ||
-           (arp_packet->pro_len != XNET_IPV4_ADDR_SIZE) || (opcode != XARP_REPLY))
+           (arp_packet->pro_len != XNET_IPV4_ADDR_SIZE) && (opcode != XARP_REPLY))
             return;
 
         //判断传入的ip是否是协议栈的ip
@@ -189,7 +202,8 @@ void xarp_in(xnet_packet_t *packet){
         //
         switch (opcode) {
             case XARP_REQUEST:
-                xarp_make_response(arp_packet);
+                xarp_make_response(arp_packet);   //对广播发送响应，发送arp包
+                update_arp_entry(arp_packet->sender_ip,arp_packet->sender_mac);   //记录该ip对应的mac地址
                 break;
             case XARP_REPLY:
                 break;

@@ -13,6 +13,7 @@
 
 //arp协议表标记状态的宏定义
 #define XARP_ENTRY_FREE 0
+#define XARP_ENTRY_OK 1
 
 //由于编译器结构体自动补充字段的影响，导致MAC地址
 // 和协议部分可能不在连续的内存空间上，使用编译器
