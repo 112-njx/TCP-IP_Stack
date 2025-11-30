@@ -2,6 +2,9 @@
 #define XNET_TINY_H
 #include <stdint.h>
 
+//设置本协议栈虚拟机ip地址
+#define XNET_CFG_NETIF_IP     {192,168,254,2};
+
 #define XNET_CFG_PACKET_MAX_SIZE 1516
 #endif // XNET_TINY_H
 
@@ -15,12 +18,14 @@
 // 和协议部分可能不在连续的内存空间上，使用编译器
 // 设置解决这一问题
 #pragma park(1)   //编译器不自动填充
-
 typedef enum xnet_protocol_t{
     XNET_PROTOCOL_ARP = 0x0806,
     XNET_PROTOCOL_IP = 0x0800,
 }xnet_protocol_t;
 
+//ip地址结构
+//union 是一种特殊的数据类型，它允许在同一内存位置存储不同的数据类型。
+// 联合体的所有成员共享同一块内存空间，联合体的大小由其最大的成员决定。
 typedef union _xipaddr_t {
     uint8_t array[XNET_IPV4_ADDR_SIZE];
     uint32_t addr;
@@ -30,29 +35,36 @@ typedef union _xipaddr_t {
 #define XARP_REQUEST    0x1
 #define XARP_REPLY      0x2
 
+//ARP包部分 本机首先发送ARP请求寻找那个机器的ip地址是
+// 收数据方的地址，该ip地址主机应答该主机MAC地址
+
+//实际需要考虑的问题:1.网卡的数量不固定 该ip地址网卡
+// 可能不工作
+//2.IP->MAC可能并不固定，IP可能动态分配网卡
+
+//问题解决：表项需可增删改
+//1.动态增加新表项
+//2.删除无效旧表项
+//3.表项无效或错误的检查
+
 //arp包结构
 typedef struct _xarp_packet_t{
     uint16_t hw_type,pro_type;                //硬件类型和协议类型
     uint8_t hw_len,pro_len;                   //硬件地址长 + 协议地址长
     uint16_t opcode;                          //请求/响应
-    uint8_t send_mac[XNET_MAC_ADDR_SIZE];     //发送包硬件地址
-    uint8_t send_ip[XNET_IPV4_ADDR_SIZE];     //发送包协议地址
+    uint8_t sender_mac[XNET_MAC_ADDR_SIZE];     //发送包硬件地址
+    uint8_t sender_ip[XNET_IPV4_ADDR_SIZE];     //发送包协议地址
     uint8_t target_mac[XNET_MAC_ADDR_SIZE];   //接收方硬件地址
     uint8_t target_ip[XNET_IPV4_ADDR_SIZE];   //接收方协议地址
 }xarp_packet_t;
 
-//表结构:xarp_entry_t
-//        ip地址
-//        MAC地址
-//        当前状态
-//        超时/剩余生存时间
-//        重试次数
+//rap包头结构
 typedef struct _xarp_entry_t {
     xipaddr_t ipaddr;  //ip address
     uint8_t macaddr[XNET_MAC_ADDR_SIZE];  //mac address
-    uint8_t state;   //
-    uint16_t tmo;
-    uint8_t retry_cnt;
+    uint8_t state;   //当前状态
+    uint16_t tmo;    //超时/剩余生存时间
+    uint8_t retry_cnt;   //重试次数
 }xarp_entry_t;
 
 //定义以太网包头结构
@@ -92,6 +104,9 @@ void xarp_init(void);
 //arp包发送请求函数
 int xarp_make_request(const xipaddr_t* ipaddr);
 
+//arp包处理函数
+void xarp_in(xnet_packet_t *packet);
+
 xnet_err_t xnet_driver_open(uint8_t* mac_addr);
 
 //发送MAC地址
@@ -99,7 +114,6 @@ xnet_err_t xnet_driver_send(xnet_packet_t* packet);
 
 //读取数据包
 xnet_err_t xnet_driver_read(xnet_packet_t** packet);
-
 
 
 

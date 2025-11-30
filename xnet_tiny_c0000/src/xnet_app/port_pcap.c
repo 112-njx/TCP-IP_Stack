@@ -14,7 +14,7 @@
 #include "xnet_tiny.h"
 
 static pcap_t* pcap;
-const char * ip_str = "192.168.254.1";
+const char * ip_str = "192.168.254.1";   //本机ip地址
 const char my_mac_addr[] = {0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88};
 
 //初始化驱动设备层

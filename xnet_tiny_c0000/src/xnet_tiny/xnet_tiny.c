@@ -2,6 +2,13 @@
 #include <string.h>
 #include "xnet_tiny.h"
 
+//协议栈网卡ip地址
+static const xipaddr_t netif_ipaddr = XNET_CFG_NETIF_IP;
+
+//(无回报)arp包发送的广播地址
+static const uint8_t ether_broadcast[] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+
+
 #define min(a,b) (a>b ? b : a)
 
 //解决网络编程和本地数据存储的高低位问题
@@ -52,10 +59,10 @@ static void truncate_packet(xnet_packet_t* packet,uint16_t header_size){
 static xnet_err_t ethernet_init(void) {
     xnet_err_t err = xnet_driver_open(netif_mac);
     if (err < 0) return err;
-    return XNET_ERR_OK;
+    return xarp_make_request(&netif_ipaddr);   //初始化成功,向全体网络广播arp包
 }
 
-//以太网包头发送函数(将ip包或者arp包通过以太网发送出去)
+//以太网包发送函数(将ip包或者arp包通过以太网发送出去)
 static xnet_err_t ethernet_out_to(xnet_protocol_t protocol,const uint8_t* mac_addr,xnet_packet_t* packet){
    //函数参数:发送协议 发送mac地址 发送包
    _xether_hdr_t* ether_hdr;  //定义以太网头
@@ -93,6 +100,9 @@ static void ethernet_in(xnet_packet_t* packet){
         //(3)例:0x0800（IP）在网络上线存储是 08 00
         //在电脑中存储是 00 08
         case XNET_PROTOCOL_ARP:
+            //移除包头,使packet中指针指向的区域是arp包区域。
+            remove_header(packet,sizeof (_xether_hdr_t));
+            xarp_in(packet);
             break;
         case XNET_PROTOCOL_IP:
             break;
@@ -118,22 +128,79 @@ void xnet_init(void){
     xarp_init();
 }
 
+//arp包发送函数
+int xarp_make_request(const xipaddr_t* ipaddr){
+    xnet_packet_t* packet = xnet_alloc_for_send(sizeof (xarp_packet_t));
+    xarp_packet_t* arp_packet = (xarp_packet_t*)packet -> data;
+
+    arp_packet->hw_type = XARP_HW_ENTER;
+    arp_packet->pro_type = swap_order16(XNET_PROTOCOL_IP);
+    arp_packet->hw_len = XNET_MAC_ADDR_SIZE;
+    arp_packet->pro_len = XNET_IPV4_ADDR_SIZE;
+    arp_packet->opcode = swap_order16(XARP_REQUEST);
+    memcpy(arp_packet->sender_mac,netif_mac,XNET_MAC_ADDR_SIZE);
+    memcpy(arp_packet->sender_ip,netif_ipaddr.array,XNET_IPV4_ADDR_SIZE);
+    memset(arp_packet->target_mac,0,XNET_MAC_ADDR_SIZE);
+    memcpy(arp_packet->target_ip,ipaddr->array,XNET_IPV4_ADDR_SIZE);
+    return ethernet_out_to(XNET_PROTOCOL_ARP,ether_broadcast,packet);
+}
+
+//当收到arp包时的处理
+//包检查:检查数据包格式是否正确
+//  判断数据包类型,若为arp请求包,返回响应,表项更新
+
+//arp包响应函数,制作一个响应包通过以太网发出
+xnet_err_t xarp_make_response (xarp_packet_t* arp_packet){
+    xnet_packet_t* packet = xnet_alloc_for_send(sizeof (xarp_packet_t));
+    xarp_packet_t* response_packet = (xarp_packet_t*)packet -> data;
+
+    response_packet->hw_type = XARP_HW_ENTER;
+    response_packet->pro_type = swap_order16(XNET_PROTOCOL_IP);
+    response_packet->hw_len = XNET_MAC_ADDR_SIZE;
+    response_packet->pro_len = XNET_IPV4_ADDR_SIZE;
+    response_packet->opcode = swap_order16(XARP_REPLY);
+    memcpy(arp_packet->sender_mac,netif_mac,XNET_MAC_ADDR_SIZE);
+    memcpy(arp_packet->sender_ip,netif_ipaddr.array,XNET_IPV4_ADDR_SIZE);
+    memset(arp_packet->target_mac,0,XNET_MAC_ADDR_SIZE);
+    memcpy(arp_packet->target_ip,ipaddr->array,XNET_IPV4_ADDR_SIZE);
+    return ethernet_out_to(XNET_PROTOCOL_ARP,ether_broadcast,packet);
+}
+
+//arp包处理函数
+void xarp_in(xnet_packet_t *packet){
+    if (packet->size >= sizeof (xarp_packet_t)){
+        xarp_packet_t* arp_packet = (xarp_packet_t*)packet->data;
+
+        //获取arp包是请求包还是响应包
+        uint16_t opcode = swap_order16(arp_packet->opcode);
+
+        //进行arp包格式,字段检查1判断硬件类型
+        if ((swap_order16(arp_packet->hw_type) != XARP_HW_ENTER) ||
+           (arp_packet->hw_len != XNET_MAC_ADDR_SIZE) ||
+           (swap_order16(arp_packet->pro_type) != XNET_PROTOCOL_IP) ||
+           (arp_packet->pro_len != XNET_IPV4_ADDR_SIZE) || (opcode != XARP_REPLY))
+            return;
+
+        //判断传入的ip是否是协议栈的ip
+        if (!xipaddr_is_equal_buf(&netif_ipaddr,arp_packet->target_ip)){
+            return;
+        }
+
+        //
+        switch (opcode) {
+            case XARP_REQUEST:
+                xarp_make_response(arp_packet);
+                break;
+            case XARP_REPLY:
+                break;
+        }
+    }
+}
+
 //轮询网卡数据函数
 void xnet_poll(void){
     ethernet_poll();
 }
-
-//ARP包部分 本机首先发送ARP请求寻找那个机器的ip地址是
-// 收数据方的地址，该ip地址主机应答该主机MAC地址
-
-//实际需要考虑的问题:1.网卡的数量不固定 该ip地址网卡
-// 可能不工作
-//2.IP->MAC可能并不固定，IP可能动态分配网卡
-
-//问题解决：表项需可增删改
-//1.动态增加新表项
-//2.删除无效旧表项
-//3.表项无效或错误的检查
 
 
 
